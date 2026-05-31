@@ -1,10 +1,13 @@
 # ComfyUI — AI Gallery Saver
 
 Custom SaveImage node for ComfyUI that writes **clean, authoritative metadata**
-designed for the [AI Gallery](https://github.com/quzopl/ai-gallery) app.
+designed for the [AI Gallery](https://github.com/quzopl/ai-gallery) app — and
+fully compatible with the **A1111 / CivitAI** metadata format as a bonus.
 
 Built on the ComfyUI v3 API with `Autogrow` — **unlimited image input slots**
 (framework cap: 100).
+
+![Save Image (AI Gallery) node, autogrow inputs](docs/screenshots/node-focused.png)
 
 ## What it writes
 
@@ -15,6 +18,21 @@ Each PNG gets three `tEXt` chunks:
 | `ai_gallery_meta` | JSON | Authoritative — AI Gallery uses this first, no heuristics needed |
 | `prompt` + `workflow` | JSON | Standard ComfyUI — drag the image back to ComfyUI to restore the workflow |
 | `parameters` | A1111 text | CivitAI, stable-diffusion-webui, A1111 ecosystem |
+
+### CivitAI compatibility
+
+The `parameters` chunk follows the A1111 webUI format exactly:
+
+```
+<positive prompt> <lora:name_1:weight_1> <lora:name_2:weight_2> …
+Negative prompt: <negative prompt>
+Steps: N, Sampler: name, CFG scale: X, Seed: N, Size: WxH, Model: name
+```
+
+This is the canonical format CivitAI's PNG inspector parses on upload — drop
+any image saved by this node onto CivitAI and the positive prompt, negative
+prompt, model, sampler, steps, CFG, seed, dimensions and inline LoRAs are
+extracted automatically.
 
 ## What it extracts from the workflow
 
@@ -28,6 +46,16 @@ Walks the execution graph (no keyword guessing):
   - stock `LoraLoader`, `LoraLoaderModelOnly`
   - rgthree `Power Lora Loader` (dict slots, respects `on: false`)
   - LoRA Stack loaders (`lora_name_1`, `lora_name_2`, …)
+
+## Screenshots
+
+### Full workflow
+
+![Full workflow with Save Image (AI Gallery)](docs/screenshots/workflow-full.png)
+
+### Pipeline tail (KSampler → VAEDecode → Save Image)
+
+![Pipeline tail](docs/screenshots/pipeline-tail.png)
 
 ## Install
 
@@ -68,6 +96,7 @@ same execution graph.
 
 - `embed_workflow` (default ON) — also embed standard ComfyUI chunks
 - `embed_a1111` (default ON) — also embed A1111-compatible `parameters`
+  (turn off only if you need a minimal PNG for some reason)
 
 ## Dependencies
 

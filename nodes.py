@@ -329,6 +329,3 @@ async def comfy_entrypoint() -> AIGallerySaverExtension:
     return AIGallerySaverExtension()
 
 
-# Backward-compat: keep v1 mappings empty (v3 extension handles registration).
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}

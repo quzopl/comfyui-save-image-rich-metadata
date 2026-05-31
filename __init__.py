@@ -8,10 +8,6 @@ Saves images with three PNG tEXt chunks:
 Single Autogrow `images` input — connect as many batches as needed
 (framework cap: 100). Per-slot filename auto-suffix.
 """
-from .nodes import (
-    NODE_CLASS_MAPPINGS,
-    NODE_DISPLAY_NAME_MAPPINGS,
-    comfy_entrypoint,
-)
+from .nodes import comfy_entrypoint
 
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "comfy_entrypoint"]
+__all__ = ["comfy_entrypoint"]
