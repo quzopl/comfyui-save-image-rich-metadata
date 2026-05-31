@@ -1,7 +1,7 @@
-"""ComfyUI custom node: AI Gallery Saver (v3 API with unlimited image inputs).
+"""ComfyUI custom node: Save Image (Rich Metadata).
 
-Saves images with three PNG tEXt chunks:
-  - ai_gallery_meta : clean JSON for AI Gallery (authoritative, no heuristics)
+A SaveImage with unlimited image input slots and three PNG tEXt chunks:
+  - ai_gallery_meta : clean JSON (authoritative; consumed by AI Gallery app)
   - prompt + workflow : standard ComfyUI (round-trip)
   - parameters     : A1111-compatible (CivitAI / webui)
 

@@ -1,13 +1,14 @@
-# ComfyUI — AI Gallery Saver
+# ComfyUI — Save Image (Rich Metadata)
 
-Custom SaveImage node for ComfyUI that writes **clean, authoritative metadata**
-designed for the [AI Gallery](https://github.com/quzopl/ai-gallery) app — and
-fully compatible with the **A1111 / CivitAI** metadata format as a bonus.
+A drop-in replacement for ComfyUI's `SaveImage` that writes **rich, multi-format
+metadata** into every PNG — fully compatible with **A1111 / CivitAI**, plus a
+clean authoritative JSON chunk consumed by the
+[AI Gallery](https://github.com/quzopl/ai-gallery) app.
 
 Built on the ComfyUI v3 API with `Autogrow` — **unlimited image input slots**
 (framework cap: 100).
 
-![Save Image (AI Gallery) node, autogrow inputs](docs/screenshots/node-focused.png)
+![Save Image (Rich Metadata) node, autogrow inputs](docs/screenshots/node-focused.png)
 
 ## What it writes
 
@@ -15,7 +16,7 @@ Each PNG gets three `tEXt` chunks:
 
 | Chunk | Format | Purpose |
 |---|---|---|
-| `ai_gallery_meta` | JSON | Authoritative — AI Gallery uses this first, no heuristics needed |
+| `ai_gallery_meta` | JSON | Canonical, authoritative metadata (consumed by AI Gallery, no heuristics needed) |
 | `prompt` + `workflow` | JSON | Standard ComfyUI — drag the image back to ComfyUI to restore the workflow |
 | `parameters` | A1111 text | CivitAI, stable-diffusion-webui, A1111 ecosystem |
 
@@ -51,7 +52,7 @@ Walks the execution graph (no keyword guessing):
 
 ### Full workflow
 
-![Full workflow with Save Image (AI Gallery)](docs/screenshots/workflow-full.png)
+![Full workflow with Save Image (Rich Metadata)](docs/screenshots/workflow-full.png)
 
 ### Pipeline tail (KSampler → VAEDecode → Save Image)
 
@@ -61,10 +62,10 @@ Walks the execution graph (no keyword guessing):
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/quzopl/comfyui-ai-gallery-saver.git
+git clone https://github.com/quzopl/comfyui-save-image-rich-metadata.git
 ```
 
-Restart ComfyUI. The node appears as **Save Image (AI Gallery)** in the
+Restart ComfyUI. The node appears as **Save Image (Rich Metadata)** in the
 `image` category.
 
 Requires ComfyUI with the v3 API (`comfy_api.latest`) — present in all
@@ -72,8 +73,8 @@ recent releases.
 
 ## Usage
 
-Replace `SaveImage` in your workflow with **Save Image (AI Gallery)**. Connect
-the `images` input, set `filename_prefix` (e.g., `AIGal`).
+Replace `SaveImage` in your workflow with **Save Image (Rich Metadata)**.
+Connect the `images` input, set `filename_prefix` (e.g., `MyRender`).
 
 ### Unlimited image inputs
 

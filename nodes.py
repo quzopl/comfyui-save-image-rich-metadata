@@ -1,10 +1,10 @@
-"""AI Gallery Saver — ComfyUI v3 node with unlimited IMAGE inputs.
+"""Save Image (Rich Metadata) — ComfyUI v3 node with unlimited IMAGE inputs.
 
 Uses ComfyUI v3 API (`comfy_api.latest`) with `Autogrow` so the user can plug
 in as many independent image batches as they want (framework caps at 100).
 
 Each batch is saved with three PNG tEXt chunks:
-  - ai_gallery_meta : clean JSON for AI Gallery (authoritative)
+  - ai_gallery_meta : clean JSON (authoritative; consumed by AI Gallery app)
   - prompt + workflow : standard ComfyUI (round-trip)
   - parameters     : A1111-compatible (CivitAI / webui)
 
@@ -69,10 +69,10 @@ def _get_text_recursive(graph: dict, value: Any, depth: int = 0) -> str | None:
 
 
 def extract_canonical(graph: dict, width: int, height: int) -> dict:
-    """Walk the execution graph and pull out clean fields for AI Gallery."""
+    """Walk the execution graph and pull out clean fields."""
     out: dict = {
         "version": 1,
-        "source": "comfyui-ai-gallery-saver",
+        "source": "comfyui-save-image-rich-metadata",
         "prompt": None,
         "negative": None,
         "model_name": None,
@@ -187,8 +187,8 @@ def _format_a1111_parameters(meta: dict) -> str:
 
 # ---------- ComfyUI v3 node ----------
 
-class AIGallerySaveImage(io.ComfyNode):
-    """Save Image (AI Gallery) — saves PNG with rich metadata for AI Gallery.
+class SaveImageRichMetadata(io.ComfyNode):
+    """Save Image (Rich Metadata) — saves PNG with rich, multi-format metadata.
 
     Has one Autogrow image input — connect as many image batches as you need
     (framework cap: 100). Each connected batch is saved with the shared
@@ -205,13 +205,14 @@ class AIGallerySaveImage(io.ComfyNode):
             max=100,
         )
         return io.Schema(
-            node_id="AIGallerySaveImage",
-            display_name="Save Image (AI Gallery)",
+            node_id="SaveImageRichMetadata",
+            display_name="Save Image (Rich Metadata)",
             category="image",
             description=(
-                "Saves images with clean AI Gallery JSON metadata + standard "
-                "ComfyUI prompt/workflow + A1111 parameters. Unlimited image "
-                "input slots (up to framework cap 100)."
+                "Saves images with clean canonical JSON metadata + standard "
+                "ComfyUI prompt/workflow + A1111-compatible parameters "
+                "(CivitAI-ready). Unlimited image input slots (up to "
+                "framework cap 100)."
             ),
             inputs=[
                 io.String.Input(
@@ -319,13 +320,13 @@ class AIGallerySaveImage(io.ComfyNode):
 
 # ---------- v3 extension entrypoint ----------
 
-class AIGallerySaverExtension(ComfyExtension):
+class SaveImageRichMetadataExtension(ComfyExtension):
     @override
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        return [AIGallerySaveImage]
+        return [SaveImageRichMetadata]
 
 
-async def comfy_entrypoint() -> AIGallerySaverExtension:
-    return AIGallerySaverExtension()
+async def comfy_entrypoint() -> SaveImageRichMetadataExtension:
+    return SaveImageRichMetadataExtension()
 
 
