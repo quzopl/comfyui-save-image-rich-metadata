@@ -48,6 +48,23 @@ Walks the execution graph (no keyword guessing):
   - rgthree `Power Lora Loader` (dict slots, respects `on: false`)
   - LoRA Stack loaders (`lora_name_1`, `lora_name_2`, …)
 
+### Custom samplers & runtime prompt builders
+
+The graph walk also handles modern Flux / SD3-style pipelines where the prompt
+isn't a plain static string on the sampler:
+
+- **Guider-based custom samplers** — `SamplerCustomAdvanced` and friends route
+  conditioning through a `guider` node (`BasicGuider`, `CFGGuider`,
+  `DualModelGuider`, …) instead of exposing `positive`/`negative` directly.
+  We follow the `guider` link to recover both, and read `cfg` from it.
+- **Ideogram 4 Prompt Builder (KJNodes)** — this node *computes* its caption
+  JSON at runtime, so there's no static `text` anywhere in the graph. We
+  reproduce the builder's exact assembly from its inputs
+  (`high_level_description`, `background`, `style_description`, `elements`,
+  color palettes) to recover the real prompt that conditioned the image.
+- **`ConditioningZeroOut`** — treated as an empty negative, so a zeroed-out
+  negative branch never echoes the positive prompt it wraps.
+
 ## Screenshots
 
 ### Full workflow

@@ -44,9 +44,115 @@ def _float_or_none(v: Any) -> float | None:
         return None
 
 
+def _resolve(graph: dict, value: Any) -> dict | None:
+    """If `value` is a link [src_id, out_idx], return the source node dict."""
+    if isinstance(value, list) and len(value) == 2:
+        node = graph.get(str(value[0]))
+        if isinstance(node, dict):
+            return node
+    return None
+
+
+def _parse_json_list(s: Any) -> list:
+    if isinstance(s, str) and s:
+        try:
+            v = json.loads(s)
+            if isinstance(v, list):
+                return v
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return []
+
+
+def _ig4_dumps(v: Any, lvl: int = 0) -> str:
+    """Mirror Ideogram4PromptBuilderKJ's serializer: indent=4 but scalar arrays inline."""
+    pad, end = "    " * (lvl + 1), "    " * lvl
+    if isinstance(v, str):
+        return json.dumps(v, ensure_ascii=False)
+    if isinstance(v, list):
+        if not v:
+            return "[]"
+        if all(not isinstance(x, (dict, list)) for x in v):
+            return "[" + ", ".join(_ig4_dumps(x, lvl) for x in v) + "]"
+        return "[\n" + ",\n".join(pad + _ig4_dumps(x, lvl + 1) for x in v) + "\n" + end + "]"
+    if isinstance(v, dict):
+        if not v:
+            return "{}"
+        items = [pad + json.dumps(k, ensure_ascii=False) + ": " + _ig4_dumps(val, lvl + 1) for k, val in v.items()]
+        return "{\n" + ",\n".join(items) + "\n" + end + "}"
+    return json.dumps(v, ensure_ascii=False)
+
+
+def _ig4_norm_bbox(box: dict) -> list:
+    def c(v):
+        return max(0, min(1000, round(v * 1000)))
+    x, y, w, h = box.get("x", 0.0), box.get("y", 0.0), box.get("w", 0.0), box.get("h", 0.0)
+    ymin, xmin, ymax, xmax = c(y), c(x), c(y + h), c(x + w)
+    if ymin > ymax:
+        ymin, ymax = ymax, ymin
+    if xmin > xmax:
+        xmin, xmax = xmax, xmin
+    return [ymin, xmin, ymax, xmax]
+
+
+def _reconstruct_ideogram4(inputs: dict) -> str:
+    """Rebuild the caption JSON that Ideogram4PromptBuilderKJ emits at runtime.
+
+    The builder computes its prompt string from its widget inputs, so it is not
+    present as a static `text` value anywhere in the graph. Its inputs *are*
+    in the graph, so we reproduce the same assembly to recover the real prompt.
+    """
+    def s(k: str) -> str:
+        v = inputs.get(k, "")
+        return v if isinstance(v, str) else ""
+
+    caption: dict = {}
+    if s("high_level_description").strip():
+        caption["high_level_description"] = s("high_level_description")
+
+    kind = s("style") or "none"
+    if kind != "none":
+        sd: dict = {"aesthetics": s("aesthetics"), "lighting": s("lighting")}
+        if kind == "photo":
+            sd["photo"] = s("style.photo")
+            sd["medium"] = s("medium")
+        else:
+            sd["medium"] = s("medium")
+            sd["art_style"] = s("style.art_style")
+        palette = [c.upper() for c in _parse_json_list(s("style_palette_data")) if c]
+        if palette:
+            sd["color_palette"] = palette
+        caption["style_description"] = sd
+
+    elements = []
+    for box in _parse_json_list(s("elements_data")):
+        if not isinstance(box, dict):
+            continue
+        etype = "text" if box.get("type") == "text" else "obj"
+        elem: dict = {"type": etype}
+        if not box.get("nobbox"):
+            elem["bbox"] = _ig4_norm_bbox(box)
+        if etype == "text":
+            elem["text"] = box.get("text", "")
+        elem["desc"] = box.get("desc", "")
+        pal = [c.upper() for c in (box.get("palette") or []) if c]
+        if pal:
+            elem["color_palette"] = pal[:5]
+        elements.append(elem)
+
+    caption["compositional_deconstruction"] = {"background": s("background"), "elements": elements}
+    return _ig4_dumps(caption)
+
+
 def _get_text_recursive(graph: dict, value: Any, depth: int = 0) -> str | None:
-    """If `value` is a link [src_id, out_idx], walk to a CLIPTextEncode and read its text."""
-    if depth > 5:
+    """If `value` is a link [src_id, out_idx], walk to a text source and read it.
+
+    Handles plain CLIPTextEncode `text` strings, nested conditioning, and
+    runtime prompt builders (Ideogram 4) whose text isn't a static input.
+    `ConditioningZeroOut` is treated as empty so a zeroed negative branch
+    doesn't echo the positive prompt it wraps.
+    """
+    if depth > 6:
         return None
     if isinstance(value, str):
         return value
@@ -54,6 +160,11 @@ def _get_text_recursive(graph: dict, value: Any, depth: int = 0) -> str | None:
         node = graph.get(str(value[0]))
         if not node:
             return None
+        ct = node.get("class_type", "")
+        if ct == "ConditioningZeroOut":
+            return None
+        if ct == "Ideogram4PromptBuilderKJ":
+            return _reconstruct_ideogram4(node.get("inputs") or {})
         inputs = node.get("inputs") or {}
         if "text" in inputs:
             txt = inputs["text"]
@@ -100,6 +211,15 @@ def extract_canonical(graph: dict, width: int, height: int) -> dict:
             sampler_found = True
             pos = inputs.get("positive")
             neg = inputs.get("negative")
+            # Custom samplers (SamplerCustom/Advanced) route conditioning through a
+            # guider node instead of exposing positive/negative directly.
+            if pos is None and neg is None and "guider" in inputs:
+                guider = _resolve(graph, inputs.get("guider"))
+                if guider:
+                    gin = guider.get("inputs") or {}
+                    pos = gin.get("positive")
+                    neg = gin.get("negative")
+                    out["cfg"] = out["cfg"] or _float_or_none(gin.get("cfg"))
             if pos is not None:
                 out["prompt"] = _get_text_recursive(graph, pos) or out["prompt"]
             if neg is not None:
