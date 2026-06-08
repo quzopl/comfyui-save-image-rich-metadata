@@ -166,11 +166,34 @@ def _get_text_recursive(graph: dict, value: Any, depth: int = 0) -> str | None:
         if ct == "Ideogram4PromptBuilderKJ":
             return _reconstruct_ideogram4(node.get("inputs") or {})
         inputs = node.get("inputs") or {}
+        # Boolean routers (ComfySwitchNode, ImpactSwitch, etc.): follow the
+        # active branch. `switch` may be a literal bool or a link; when it's
+        # not a plain bool we can't evaluate it, so try both branches.
+        if "on_true" in inputs or "on_false" in inputs:
+            sw = inputs.get("switch")
+            order = (("on_true",) if sw is True else
+                     ("on_false",) if sw is False else
+                     ("on_true", "on_false"))
+            for b in order:
+                if b in inputs:
+                    t = _get_text_recursive(graph, inputs[b], depth + 1)
+                    if t:
+                        return t
+            return None
         if "text" in inputs:
             txt = inputs["text"]
             if isinstance(txt, str):
                 return txt
             return _get_text_recursive(graph, txt, depth + 1)
+        # Primitive string nodes (PrimitiveStringMultiline, PrimitiveString,
+        # String Literal, …) carry their text in a `value` field.
+        if "value" in inputs:
+            val = inputs["value"]
+            if isinstance(val, str):
+                return val
+            t = _get_text_recursive(graph, val, depth + 1)
+            if t:
+                return t
         for key in ("conditioning", "positive", "negative", "text_g", "text_l"):
             if key in inputs:
                 t = _get_text_recursive(graph, inputs[key], depth + 1)
