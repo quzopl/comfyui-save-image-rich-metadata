@@ -165,6 +165,14 @@ def _get_text_recursive(graph: dict, value: Any, depth: int = 0) -> str | None:
             return None
         if ct == "Ideogram4PromptBuilderKJ":
             return _reconstruct_ideogram4(node.get("inputs") or {})
+        if ct == "Ideogram4BboxEditor":
+            # The bbox editor assembles its caption in the frontend and stores
+            # it in the `caption_json` widget, so that string *is* the prompt
+            # (the node only re-applies the target size at runtime).
+            cj = (node.get("inputs") or {}).get("caption_json")
+            if isinstance(cj, str) and cj.strip() and cj.strip() != "{}":
+                return cj
+            return None
         inputs = node.get("inputs") or {}
         # Boolean routers (ComfySwitchNode, ImpactSwitch, etc.): follow the
         # active branch. `switch` may be a literal bool or a link; when it's
