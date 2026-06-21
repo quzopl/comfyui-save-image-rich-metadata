@@ -22,18 +22,27 @@ Each PNG gets three `tEXt` chunks:
 
 ### CivitAI compatibility
 
-The `parameters` chunk follows the A1111 webUI format exactly:
+The `parameters` chunk follows the A1111 webUI format exactly, including
+**resource hashes** so CivitAI auto-detects and links the checkpoint and LoRAs:
 
 ```
 <positive prompt> <lora:name_1:weight_1> <lora:name_2:weight_2> …
 Negative prompt: <negative prompt>
-Steps: N, Sampler: name, CFG scale: X, Seed: N, Size: WxH, Model: name
+Steps: N, Sampler: name, CFG scale: X, Seed: N, Size: WxH, Model hash: abc123def456, Model: name, Lora hashes: "name_1: 0011aabbccdd, name_2: …", Hashes: {"model": "abc123def456", "lora:name_1": "0011aabbccdd"}
 ```
 
 This is the canonical format CivitAI's PNG inspector parses on upload — drop
 any image saved by this node onto CivitAI and the positive prompt, negative
 prompt, model, sampler, steps, CFG, seed, dimensions and inline LoRAs are
-extracted automatically.
+extracted automatically, and the model/LoRA **resource pages are linked** via
+their hashes.
+
+**Hashes** are the **AutoV2** form (first 12 hex of the file's SHA256), computed
+for the checkpoint/UNet (searched in `checkpoints` → `diffusion_models` →
+`unet`) and every LoRA (`loras`). Each file is hashed once and cached in
+`.hash_cache.json` (keyed by path + size + mtime), so the first save after
+loading a new model is slower and subsequent saves are instant. Nothing is
+written next to your model files.
 
 ## What it extracts from the workflow
 

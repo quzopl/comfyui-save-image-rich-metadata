@@ -13,6 +13,7 @@ Per-slot filename auto-suffix: slot 1 uses `filename_prefix`, slot N>1 uses
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -305,6 +306,118 @@ def extract_canonical(graph: dict, width: int, height: int) -> dict:
     return out
 
 
+# ---------- CivitAI resource hashes (AutoV2 = first 12 hex of SHA256) --------
+
+_HASH_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".hash_cache.json")
+_HASH_CACHE: dict | None = None
+
+
+def _autov2(sha_hex: Any) -> str:
+    return sha_hex[:12] if isinstance(sha_hex, str) else ""
+
+
+def _lora_key(name: str) -> str:
+    """The lora name as used in <lora:NAME:..> / Hashes: basename, no extension."""
+    base = os.path.basename(str(name).replace("\\", "/"))
+    return os.path.splitext(base)[0]
+
+
+def _lora_hashes_str(loras: list) -> str:
+    parts = [f"{_lora_key(l['name'])}: {l['hash']}" for l in (loras or []) if l.get("hash")]
+    return ", ".join(parts)
+
+
+def _hashes_json(meta: dict) -> dict:
+    out: dict = {}
+    if meta.get("model_hash"):
+        out["model"] = meta["model_hash"]
+    for l in meta.get("loras") or []:
+        if l.get("hash"):
+            out[f"lora:{_lora_key(l['name'])}"] = l["hash"]
+    return out
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _hash_file(path: str, cache: dict) -> str | None:
+    """Full SHA256 of `path`, cached by path+size+mtime. None if missing/unreadable."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = f"{os.path.abspath(path)}|{st.st_size}|{st.st_mtime_ns}"
+    if key in cache:
+        return cache[key]
+    try:
+        digest = _sha256_file(path)
+    except OSError:
+        return None
+    cache[key] = digest
+    return digest
+
+
+def _load_hash_cache() -> dict:
+    global _HASH_CACHE
+    if _HASH_CACHE is None:
+        try:
+            with open(_HASH_CACHE_FILE, "r", encoding="utf-8") as f:
+                _HASH_CACHE = json.load(f)
+        except (OSError, ValueError):
+            _HASH_CACHE = {}
+    return _HASH_CACHE
+
+
+def _save_hash_cache() -> None:
+    try:
+        with open(_HASH_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(_HASH_CACHE or {}, f)
+    except OSError:
+        pass
+
+
+def _resolve_model_path(name: str, folders: tuple) -> str | None:
+    if not isinstance(name, str) or not name:
+        return None
+    for folder in folders:
+        try:
+            p = folder_paths.get_full_path(folder, name)
+        except Exception:
+            p = None
+        if p and os.path.exists(p):
+            return p
+    return None
+
+
+def _augment_with_hashes(meta: dict) -> dict:
+    """Fill meta['model_hash'] and per-lora 'hash' (AutoV2), using a persistent
+    cache so big model files are hashed only once."""
+    cache = _load_hash_cache()
+    before = len(cache)
+
+    mp = _resolve_model_path(meta.get("model_name"), ("checkpoints", "diffusion_models", "unet"))
+    if mp:
+        full = _hash_file(mp, cache)
+        if full:
+            meta["model_hash"] = _autov2(full)
+
+    for lora in meta.get("loras") or []:
+        lp = _resolve_model_path(lora.get("name"), ("loras",))
+        if lp:
+            full = _hash_file(lp, cache)
+            if full:
+                lora["hash"] = _autov2(full)
+
+    if len(cache) != before:
+        _save_hash_cache()
+    return meta
+
+
 # ---------- A1111 parameters formatting ----------
 
 def _format_a1111_parameters(meta: dict) -> str:
@@ -329,8 +442,17 @@ def _format_a1111_parameters(meta: dict) -> str:
         kv.append(f"Seed: {meta['seed']}")
     if meta.get("width") and meta.get("height"):
         kv.append(f"Size: {meta['width']}x{meta['height']}")
+    if meta.get("model_hash"):
+        kv.append(f"Model hash: {meta['model_hash']}")
     if meta.get("model_name"):
         kv.append(f"Model: {meta['model_name']}")
+    lora_hashes = _lora_hashes_str(meta.get("loras") or [])
+    if lora_hashes:
+        kv.append(f'Lora hashes: "{lora_hashes}"')
+    # `Hashes` is JSON and must be LAST so its commas aren't read as kv separators.
+    hashes = _hashes_json(meta)
+    if hashes:
+        kv.append("Hashes: " + json.dumps(hashes))
     if kv:
         parts.append(", ".join(kv))
     return "\n".join(parts)
@@ -439,12 +561,14 @@ class SaveImageRichMetadata(io.ComfyNode):
         full_output_folder, filename, counter, subfolder, _ = (
             folder_paths.get_save_image_path(filename_prefix, output_dir, w, h)
         )
+        # Same for every image in the batch; hash resource files once (cached).
+        meta = extract_canonical(prompt or {}, w, h)
+        _augment_with_hashes(meta)
+
         out: list[dict] = []
         for image in images:
             arr = 255.0 * image.cpu().numpy()
             img = PILImage.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
-
-            meta = extract_canonical(prompt or {}, w, h)
 
             png_info = PngInfo()
             png_info.add_text("ai_gallery_meta", json.dumps(meta, ensure_ascii=False))
